@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chat & Image</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 侧边栏 -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2 class="logo">AI Studio</h2>
+                <button class="btn-icon" id="toggleSidebar" title="收起侧边栏">&#9776;</button>
+            </div>
+
+            <!-- 模式切换 -->
+            <div class="mode-switch">
+                <button class="mode-btn active" data-mode="chat" id="modeChat">对话</button>
+                <button class="mode-btn" data-mode="image" id="modeImage">生图</button>
+            </div>
+
+            <!-- 设置面板 -->
+            <div class="settings-panel">
+                <h3 class="settings-title">设置</h3>
+
+                <!-- API Key -->
+                <div class="setting-group">
+                    <label class="setting-label">API Key</label>
+                    <div class="input-row">
+                        <input type="password" id="apiKeyInput" class="setting-input" placeholder="输入 API Key">
+                        <button class="btn-icon btn-toggle-vis" id="toggleKeyVis" title="显示/隐藏">&#128065;</button>
+                    </div>
+                </div>
+
+                <!-- API Base URL -->
+                <div class="setting-group">
+                    <label class="setting-label">API Base URL</label>
+                    <input type="text" id="baseUrlInput" class="setting-input" placeholder="http://localhost:8765/v1/" value="http://localhost:8765/v1/">
+                    <span class="setting-hint">本地代理: http://localhost:8765/v1/</span>
+                </div>
+
+                <!-- 模型选择 -->
+                <div class="setting-group">
+                    <label class="setting-label">对话模型</label>
+                    <select id="chatModelSelect" class="setting-select">
+                        <option value="Qwen/Qwen3.5-35B-A3B">Qwen3.5-35B-A3B</option>
+                        <option value="Qwen/Qwen3.5-27B">Qwen3.5-27B</option>
+                        <option value="Qwen/Qwen3-235B-A22B">Qwen3-235B-A22B</option>
+                        <option value="Qwen/Qwen3-32B">Qwen3-32B</option>
+                        <option value="Qwen/Qwen3-8B">Qwen3-8B</option>
+                        <option value="deepseek-ai/DeepSeek-V3.2">DeepSeek-V3.2</option>
+                        <option value="ZhipuAI/GLM-5.2">GLM-5.2</option>
+                        <option value="MiniMax/MiniMax-M3">MiniMax-M3</option>
+                        <option value="moonshotai/Kimi-K2.5">Kimi-K2.5</option>
+                        <option value="stepfun-ai/Step-3.7-Flash">Step-3.7-Flash</option>
+                    </select>
+                </div>
+
+                <div class="setting-group">
+                    <label class="setting-label">生图模型</label>
+                    <select id="imageModelSelect" class="setting-select">
+                        <option value="Tongyi-MAI/Z-Image-Turbo">Z-Image-Turbo (快速)</option>
+                        <option value="Tongyi-MAI/Z-Image">Z-Image (标准)</option>
+                        <option value="Qwen/Qwen-Image">Qwen-Image</option>
+                        <option value="Qwen/Qwen-Image-2512">Qwen-Image-2512</option>
+                        <option value="Kwai-Kolors/Kolors">Kolors (可图)</option>
+                        <option value="Tencent-Hunyuan/HunyuanImage-3.0">HunyuanImage-3.0</option>
+                        <option value="Tencent-Hunyuan/HunyuanImage-2.1">HunyuanImage-2.1</option>
+                        <option value="black-forest-labs/FLUX.1-dev">FLUX.1-dev</option>
+                        <option value="black-forest-labs/FLUX.1-schnell">FLUX.1-schnell</option>
+                        <option value="stabilityai/stable-diffusion-xl-base-1.0">SDXL</option>
+                        <option value="HiDream-ai/HiDream-O1-Image">HiDream-O1</option>
+                    </select>
+                </div>
+
+                <!-- 自定义模型 -->
+                <div class="setting-group">
+                    <label class="setting-label">自定义模型</label>
+                    <div class="input-row">
+                        <input type="text" id="customModelInput" class="setting-input" placeholder="输入模型 ID，如 org/model-name">
+                        <button class="btn-small" id="addCustomModel">添加</button>
+                    </div>
+                    <div id="customModelsList" class="custom-models-list"></div>
+                </div>
+
+                <!-- 生图参数 -->
+                <div class="setting-group image-only">
+                    <label class="setting-label">图片尺寸</label>
+                    <select id="imageSizeSelect" class="setting-select">
+                        <option value="1024x1024">1024 x 1024</option>
+                        <option value="768x1024">768 x 1024 (竖版)</option>
+                        <option value="1024x768">1024 x 768 (横版)</option>
+                        <option value="512x512">512 x 512</option>
+                        <option value="2048x2048">2048 x 2048</option>
+                    </select>
+                </div>
+
+                <div class="setting-group image-only">
+                    <label class="setting-label">生成数量</label>
+                    <input type="number" id="imageCountInput" class="setting-input" value="1" min="1" max="4">
+                </div>
+
+                <!-- 保存按钮 -->
+                <button class="btn-primary" id="saveSettings">保存设置</button>
+            </div>
+
+            <!-- 底部信息 -->
+            <div class="sidebar-footer">
+                <span class="version">v1.0.0</span>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 顶部栏 -->
+            <header class="topbar">
+                <button class="btn-icon" id="openSidebar" style="display:none;" title="展开侧边栏">&#9776;</button>
+                <span class="topbar-title" id="topbarTitle">对话</span>
+                <button class="btn-icon" id="clearBtn" title="清空">&#10005;</button>
+            </header>
+
+            <!-- 对话区域 -->
+            <div class="chat-area" id="chatArea">
+                <div class="messages-container" id="messagesContainer">
+                    <div class="welcome-message" id="welcomeMessage">
+                        <h2>欢迎使用 AI Studio</h2>
+                        <p>选择左侧模式开始使用</p>
+                        <div class="welcome-cards">
+                            <div class="welcome-card" data-action="chat">
+                                <span class="card-icon">&#128172;</span>
+                                <span>开始对话</span>
+                            </div>
+                            <div class="welcome-card" data-action="image">
+                                <span class="card-icon">&#127912;</span>
+                                <span>生成图片</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 生图区域 -->
+            <div class="image-area hidden" id="imageArea">
+                <div class="image-input-section">
+                    <textarea id="imagePromptInput" class="prompt-input" placeholder="描述你想生成的图片...&#10;&#10;示例：一个年轻女孩，长发，微笑，阳光照在脸上，清新自然" rows="3"></textarea>
+                    <button class="btn-primary generate-btn" id="generateImageBtn">生成图片</button>
+                </div>
+                <div class="image-results" id="imageResults"></div>
+            </div>
+
+            <!-- 底部输入区 -->
+            <div class="input-section" id="inputSection">
+                <div class="input-wrapper">
+                    <textarea id="chatInput" class="chat-input" placeholder="输入消息..." rows="1"></textarea>
+                    <button class="btn-send" id="sendBtn" title="发送">&#10148;</button>
+                </div>
+            </div>
+
+            <!-- 调试控制台 -->
+            <div class="debug-console" id="debugConsole">
+                <div class="debug-header">
+                    <span class="debug-title">调试控制台</span>
+                    <div class="debug-actions">
+                        <button class="btn-icon btn-small" id="toggleDebug" title="展开/收起">&#9776;</button>
+                        <button class="btn-icon btn-small" id="clearDebug" title="清空">&#10005;</button>
+                    </div>
+                </div>
+                <div class="debug-content" id="debugContent"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

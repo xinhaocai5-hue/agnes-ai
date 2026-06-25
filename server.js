@@ -11,6 +11,13 @@ const { URL } = require("url");
 const PORT = 8000;
 const MODEL_SCOPE_BASE = "https://api-inference.modelscope.cn";
 
+// 需要跳过的上游CORS头（避免重复）
+const SKIP_HEADERS = new Set([
+    'transfer-encoding', 'connection',
+    'access-control-allow-origin', 'access-control-allow-methods',
+    'access-control-allow-headers', 'access-control-max-age'
+]);
+
 // MIME types
 const MIME_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -33,6 +40,7 @@ function setCORS(res) {
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Access-Control-Expose-Headers", "*");
+    res.setHeader("Access-Control-Max-Age", "86400");
 }
 
 function proxyRequest(targetUrl, method, reqHeaders, body) {
@@ -41,10 +49,14 @@ function proxyRequest(targetUrl, method, reqHeaders, body) {
         const isHttps = parsed.protocol === "https:";
         const transport = isHttps ? https : http;
 
-        const headers = { ...reqHeaders };
-        delete headers["host"];
-        delete headers["origin"];
-        delete headers["referer"];
+        // 复制请求头，排除不需要的
+        const headers = {};
+        for (const [k, v] of Object.entries(reqHeaders)) {
+            const kl = k.toLowerCase();
+            if (kl !== 'host' && kl !== 'content-length' && kl !== 'origin' && kl !== 'referer') {
+                headers[k] = v;
+            }
+        }
 
         const options = {
             hostname: parsed.hostname,
@@ -67,7 +79,7 @@ function proxyRequest(targetUrl, method, reqHeaders, body) {
         });
 
         proxyReq.on("error", reject);
-        proxyReq.setTimeout(30000, () => { proxyReq.destroy(); reject(new Error("Timeout")); });
+        proxyReq.setTimeout(300000, () => { proxyReq.destroy(); reject(new Error("Timeout")); });
 
         if (body && method !== "GET" && method !== "HEAD") {
             proxyReq.write(body);
@@ -77,7 +89,6 @@ function proxyRequest(targetUrl, method, reqHeaders, body) {
 }
 
 function stripBOM(data) {
-    // 移除UTF-8 BOM (0xEF 0xBB 0xBF)，可连续出现多个
     let start = 0;
     while (start < data.length - 2 && data[start] === 0xEF && data[start + 1] === 0xBB && data[start + 2] === 0xBF) {
         start += 3;
@@ -108,10 +119,23 @@ function serveStatic(req, res, filePath) {
 
 function getRequestBody(req) {
     return new Promise((resolve) => {
-        let body = "";
-        req.on("data", (chunk) => (body += chunk));
-        req.on("end", () => resolve(body));
+        let body = [];
+        req.on("data", (chunk) => body.push(chunk));
+        req.on("end", () => resolve(Buffer.concat(body)));
     });
+}
+
+// 写代理响应：先设CORS头，再复制上游头（跳过CORS相关），避免重复
+function writeProxyResponse(res, result) {
+    setCORS(res);
+    // 复制上游响应头，跳过CORS相关头
+    for (const [key, value] of Object.entries(result.headers)) {
+        if (!SKIP_HEADERS.has(key.toLowerCase())) {
+            res.setHeader(key, value);
+        }
+    }
+    res.writeHead(result.status);
+    res.end(result.body);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -127,19 +151,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     try {
-        // 魔搭 API 代理
+        // 魔搭 API 代理: /api/modelscope/v1/... -> https://api-inference.modelscope.cn/v1/...
         if (pathname.startsWith("/api/modelscope/")) {
             const targetPath = pathname.replace("/api/modelscope", "");
             const targetUrl = MODEL_SCOPE_BASE + targetPath + parsedUrl.search;
             const body = await getRequestBody(req);
-            console.log(`[Proxy] ${req.method} -> ${targetUrl}`);
-            if (body) console.log(`[Proxy] Body: ${body.substring(0, 200)}`);
             const result = await proxyRequest(targetUrl, req.method, req.headers, body);
-
-            setCORS(res);
-            const resHeaders = { ...result.headers, "Access-Control-Allow-Origin": "*" };
-            res.writeHead(result.status, resHeaders);
-            res.end(result.body);
+            writeProxyResponse(res, result);
+            console.log(`[ModelScope] ${req.method} ${targetPath} -> ${result.status}`);
             return;
         }
 
@@ -152,15 +171,9 @@ const server = http.createServer(async (req, res) => {
                 res.end(JSON.stringify({ error: "Missing target parameter" }));
                 return;
             }
-            console.log(`[Proxy] -> ${targetUrl}`);
-
             const body = await getRequestBody(req);
             const result = await proxyRequest(targetUrl, req.method, req.headers, body);
-
-            setCORS(res);
-            const resHeaders = { ...result.headers, "Access-Control-Allow-Origin": "*" };
-            res.writeHead(result.status, resHeaders);
-            res.end(result.body);
+            writeProxyResponse(res, result);
             return;
         }
 
@@ -173,23 +186,21 @@ const server = http.createServer(async (req, res) => {
                 res.end("Missing url parameter");
                 return;
             }
-            console.log(`[Download] -> ${fileUrl}`);
-
             const result = await proxyRequest(fileUrl, "GET", {}, null);
             setCORS(res);
-            const resHeaders = {
-                ...result.headers,
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "public, max-age=86400",
-            };
-            res.writeHead(result.status, resHeaders);
+            for (const [key, value] of Object.entries(result.headers)) {
+                if (!SKIP_HEADERS.has(key.toLowerCase())) {
+                    res.setHeader(key, value);
+                }
+            }
+            res.setHeader("Cache-Control", "public, max-age=86400");
+            res.writeHead(result.status);
             res.end(result.body);
             return;
         }
 
         // 静态文件
         let filePath = path.join(__dirname, pathname === "/" ? "Agnes.html" : pathname);
-        // 安全检查：防止目录遍历
         filePath = path.resolve(filePath);
         if (!filePath.startsWith(__dirname)) {
             res.writeHead(403);
@@ -200,12 +211,14 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
         console.error(`[Error] ${err.message}`);
         setCORS(res);
-        res.writeHead(502, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err.message }));
+        try {
+            res.writeHead(502, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: { message: err.message } }));
+        } catch {}
     }
 });
 
-// 启动时自动清除主文件BOM（IDE编辑会反复引入BOM）
+// 启动时自动清除主文件BOM
 function cleanFileBOM(filePath) {
     try {
         const data = fs.readFileSync(filePath);

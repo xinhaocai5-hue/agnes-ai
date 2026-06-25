@@ -1,4 +1,6 @@
 副本/
 gitee-2.0/
 node_modules/
+.uploads/
+.dev.vars
 .DS_Store
