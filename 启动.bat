@@ -23,6 +23,17 @@ if not defined NODE_EXE (
 
 echo  Using: %NODE_EXE%
 
+:: 设置代理绕过：魔搭、阿里云等国内域名不走梯子
+set "NO_PROXY=modelscope.cn,aliyuncs.com,aliyun.com,localhost,127.0.0.1"
+set "no_proxy=%NO_PROXY%"
+set "HTTP_PROXY="
+set "HTTPS_PROXY="
+set "ALL_PROXY="
+set "http_proxy="
+set "https_proxy="
+set "all_proxy="
+echo  Proxy bypass: %NO_PROXY%
+
 :: Start server in background
 start /b "" "%NODE_EXE%" "%~dp0server.js"
 

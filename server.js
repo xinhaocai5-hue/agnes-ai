@@ -11,6 +11,14 @@ const { URL } = require("url");
 const PORT = 8000;
 const MODEL_SCOPE_BASE = "https://api-inference.modelscope.cn";
 
+// 清除所有代理环境变量，确保魔搭等国内API直连不走梯子
+delete process.env.HTTP_PROXY;  delete process.env.http_proxy;
+delete process.env.HTTPS_PROXY; delete process.env.https_proxy;
+delete process.env.ALL_PROXY;   delete process.env.all_proxy;
+// 设置 NO_PROXY：魔搭、阿里云OSS 等国内域名强制直连
+process.env.NO_PROXY = 'modelscope.cn,aliyuncs.com,aliyun.com,localhost,127.0.0.1';
+process.env.no_proxy = process.env.NO_PROXY;
+
 // 需要跳过的上游CORS头（避免重复）
 const SKIP_HEADERS = new Set([
     'transfer-encoding', 'connection',
@@ -43,6 +51,13 @@ function setCORS(res) {
     res.setHeader("Access-Control-Max-Age", "86400");
 }
 
+// 魔搭专用 Agent：显式禁用代理，防止梯子 TUN 模式劫持
+const modelscopeAgent = new https.Agent({
+    keepAlive: true,
+    // 禁用代理
+    proxy: false,
+});
+
 function proxyRequest(targetUrl, method, reqHeaders, body) {
     return new Promise((resolve, reject) => {
         const parsed = new URL(targetUrl);
@@ -65,6 +80,11 @@ function proxyRequest(targetUrl, method, reqHeaders, body) {
             method,
             headers,
         };
+
+        // 魔搭域名使用专用 Agent 绕过代理
+        if (parsed.hostname.includes('modelscope') || parsed.hostname.includes('aliyuncs')) {
+            options.agent = modelscopeAgent;
+        }
 
         const proxyReq = transport.request(options, (proxyRes) => {
             let data = [];
