@@ -3430,6 +3430,21 @@
                         <div class="history-card-grid" id="historyCardGrid"></div>
                     </div>
                 </div>
+                <!-- Agent设置二级界面 -->
+                <div class="settings-view" id="settingsViewAgent" style="display:none;">
+                    <button class="settings-back" onclick="showSettingsView('main')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
+                    <div style="padding:0 4px;">
+                        <div class="form-label" style="margin-bottom:8px;">系统提示词</div>
+                        <textarea class="form-textarea" id="agentPromptEditor" rows="16" placeholder="输入自定义系统提示词..." style="font-family:monospace;font-size:0.82rem;line-height:1.5;resize:vertical;min-height:200px;"></textarea>
+                        <div style="display:flex;gap:8px;margin-top:10px;">
+                            <button class="preset-btn active" onclick="saveAgentPrompt()" style="flex:1;">保存</button>
+                            <button class="preset-btn" onclick="resetAgentPrompt()" style="flex:1;">恢复默认</button>
+                        </div>
+                        <div style="margin-top:8px;font-size:0.75rem;color:var(--text-secondary);line-height:1.4;">
+                            自定义 Agent 的系统提示词，影响 AI 对话与生成参数分析的行为。修改后新对话生效。
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -3469,6 +3484,14 @@
                             <div class="settings-nav-text">
                                 <div class="settings-nav-title">主题色彩</div>
                                 <div class="settings-nav-desc" id="themeNavDesc">跟随系统</div>
+                            </div>
+                            <svg class="settings-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                        </div>
+                        <div class="settings-nav-item" onclick="showSettingsView('agent')">
+                            <div class="settings-nav-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+                            <div class="settings-nav-text">
+                                <div class="settings-nav-title">Agent 设置</div>
+                                <div class="settings-nav-desc" id="agentPromptNavDesc">自定义系统提示词</div>
                             </div>
                             <svg class="settings-nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                         </div>
@@ -3658,6 +3681,11 @@
                         } else {
                             // 已存在平台：补充缺失的默认模型（保留用户已添加的模型）
                             if (!existing.models) existing.models = [];
+                            // 预设模型为空时，清空本地旧版遗留的预设模型（如 Gitee AI）
+                            if (preset.models.length === 0 && existing.models.length > 0) {
+                                existing.models = [];
+                                changed = true;
+                            }
                             const existingIds = new Set(existing.models.map(m => m.id));
                             preset.models.forEach(pm => {
                                 if (!existingIds.has(pm.id)) {
@@ -3918,7 +3946,7 @@
                 isProcessing: false,
                 pendingGenerations: {}
             };
-            const AGENT_SYSTEM_PROMPT = `你是一个专业的AI图像和视频生成助手，名字叫Agnes。你可以用中文与用户对话，分析他们的创作需求。
+            const DEFAULT_AGENT_SYSTEM_PROMPT = `你是一个专业的AI图像和视频生成助手，名字叫Agnes。你可以用中文与用户对话，分析他们的创作需求。
 
 当用户表达了明确的生成意图且信息足够时，你需要返回JSON分析结果。
 
@@ -3962,6 +3990,40 @@
 
 重要：当返回JSON时，只返回纯JSON，不要用markdown代码块包裹，不要添加任何前缀或后缀文字。`;
 
+            function getAgentSystemPrompt() {
+                return localStorage.getItem('agnes-agent-prompt') || DEFAULT_AGENT_SYSTEM_PROMPT;
+            }
+
+            function loadAgentPromptEditor() {
+                const editor = document.getElementById('agentPromptEditor');
+                if (editor) editor.value = getAgentSystemPrompt();
+                const navDesc = document.getElementById('agentPromptNavDesc');
+                if (navDesc) {
+                    const isCustom = localStorage.getItem('agnes-agent-prompt');
+                    navDesc.textContent = isCustom ? '已自定义' : '默认提示词';
+                }
+            }
+
+            window.saveAgentPrompt = function() {
+                const editor = document.getElementById('agentPromptEditor');
+                if (!editor) return;
+                const value = editor.value.trim();
+                if (!value) { showToast('提示词不能为空', 'error'); return; }
+                localStorage.setItem('agnes-agent-prompt', value);
+                const navDesc = document.getElementById('agentPromptNavDesc');
+                if (navDesc) navDesc.textContent = '已自定义';
+                showToast('系统提示词已保存，新对话生效', 'success');
+            }
+
+            window.resetAgentPrompt = function() {
+                localStorage.removeItem('agnes-agent-prompt');
+                const editor = document.getElementById('agentPromptEditor');
+                if (editor) editor.value = DEFAULT_AGENT_SYSTEM_PROMPT;
+                const navDesc = document.getElementById('agentPromptNavDesc');
+                if (navDesc) navDesc.textContent = '默认提示词';
+                showToast('已恢复默认系统提示词', 'success');
+            }
+
             const taskManager = {
                 tasks: [],
                 nextId: 1,
@@ -3978,7 +4040,7 @@
                 getPending() { return this.tasks.filter(t => t.status === 'pending'); },
                 getRunning() { return this.tasks.filter(t => t.status === 'running'); },
                 canStart() { return this.runningCount < this.maxConcurrency; },
-                markStarted(id) { this.runningCount++; this.update(id, { status: 'running', startedAt: Date.now() }); const task = this.tasks.find(t => t.id === id); if (task && task.fromAgent && task.agentCardId) { updateProgressCard(task.agentCardId, 'running', 30, null, null); } },
+                markStarted(id) { this.runningCount++; this.update(id, { status: 'running', startedAt: Date.now() }); const task = this.tasks.find(t => t.id === id); if (task && task.fromAgent && task.agentCardId) { const card = document.getElementById('progressCard_' + task.agentCardId); if (card && card.querySelector('.agent-msg-result')) { const text = card.querySelector('.agent-progress-text'); if (text) text.textContent = text.textContent.replace(/已生成 \d+\/\d+\.\.\./, m => m.replace('...', '')) + ' 生成中...'; } else { updateProgressCard(task.agentCardId, 'running', 30, null, null); } } },
                 markCompleted(id, result) { this.runningCount = Math.max(0, this.runningCount - 1); this.update(id, { status: 'completed',
                         result, completedAt: Date.now() }); if (this.onTaskComplete) this.onTaskComplete(id,
                     result); this.processQueue(); },
@@ -3988,8 +4050,8 @@
                 processQueue() { const pending = this.getPending(); for (const task of pending) { if (!this.canStart())
                             break; this.executeTask(task); } },
                 async executeTask(task) { this.markStarted(task.id); try { const result = await executeWithKey(task.type,
-                            task.params); this.markCompleted(task.id, result); addToHistory(result, task.params
-                            .prompt || '', task.type, task.meta || null); } catch (e) { this.markFailed(task.id,
+                            task.params); this.markCompleted(task.id, result); try { addToHistory(result, task.params
+                            .prompt || '', task.type, task.meta || null); } catch (histErr) { console.error('[History] 保存失败:', histErr); } } catch (e) { this.markFailed(task.id,
                         e); } },
                 render() { renderTaskList();
                     updateTaskBadge();
@@ -4045,7 +4107,7 @@
 
             // 设置视图切换: main / api / theme
             window.showSettingsView = function(view) {
-                const views = ['main', 'api', 'theme'];
+                const views = ['main', 'api', 'theme', 'agent'];
                 views.forEach(v => {
                     const el = document.getElementById('settingsView' + v.charAt(0).toUpperCase() + v.slice(1));
                     if (el) el.style.display = (v === view) ? 'block' : 'none';
@@ -4053,7 +4115,8 @@
                 const title = document.getElementById('settingsTitle');
                 const addPlatformBtn = document.getElementById('addPlatformBtn');
                 if (title) {
-                    title.textContent = view === 'main' ? '设置' : (view === 'api' ? 'API 管理' : '主题色彩');
+                    const titleMap = { main: '设置', api: 'API 管理', theme: '主题色彩', agent: 'Agent 设置' };
+                    title.textContent = titleMap[view] || '设置';
                 }
                 // 仅在 API 管理视图显示"添加平台"按钮
                 if (addPlatformBtn) {
@@ -4061,6 +4124,7 @@
                 }
                 if (view === 'api') renderSettingsPlatforms();
                 if (view === 'theme') updateThemeUI();
+                if (view === 'agent') loadAgentPromptEditor();
             }
 
             // ===== 主题管理 =====
@@ -5417,20 +5481,37 @@
                     const res = await fetch(pollUrl, { headers: pollHeaders });
                     if (!res.ok) { await new Promise(r => setTimeout(r, 5000)); continue; }
                     const data = await res.json();
-                    // 成功
-                    if (data.task_status === 'SUCCEED' || data.status === 'completed' || data.status === 'succeeded') {
+                    // 成功（兼容多种状态字段和大小写）
+                    const suc = data.task_status === 'SUCCEED' || data.task_status === 'SUCCEEDED'
+                        || data.status === 'completed' || data.status === 'succeeded' || data.status === 'success'
+                        || data.status === 'COMPLETED' || data.status === 'SUCCEEDED';
+                    if (suc) {
                         // 魔搭: output_images[] 或 output.images[].url; 其他: data[].url 或 url
                         const url = data.output_images?.[0]
                             || data.output?.images?.[0]?.url
+                            || data.output?.images?.[0]
                             || data.output?.file_url
                             || data.output?.video_url
+                            || data.output?.url
+                            || data.result?.url
+                            || data.result?.[0]?.url
                             || data.data?.[0]?.url
-                            || data.url;
+                            || data.data?.url
+                            || data.url
+                            || data.image_url;
                         if (url) return proxyDownloadUrl(url, platformId);
+                        // 成功但无URL：尝试从 results 数组提取
+                        if (data.output?.results?.length > 0) {
+                            const rUrl = data.output.results[0]?.url || data.output.results[0];
+                            if (rUrl) return proxyDownloadUrl(rUrl, platformId);
+                        }
+                        console.warn('[Poll] 任务成功但未匹配到URL，原始响应:', JSON.stringify(data).substring(0, 500));
                         throw new Error('任务成功但未返回结果URL');
                     }
                     // 失败
-                    if (data.task_status === 'FAILED' || data.status === 'failed')
+                    const fail = data.task_status === 'FAILED' || data.task_status === 'FAILURE'
+                        || data.status === 'failed' || data.status === 'error' || data.status === 'FAILED';
+                    if (fail)
                         throw new Error(data.error || data.message || data.error_message || '任务失败');
                     // 进行中，5秒后重试
                     await new Promise(r => setTimeout(r, 5000));
@@ -5934,7 +6015,7 @@
 
             async function callLLMAgent(userText, imageUrls = []) {
                 const recentMessages = agentState.messages.slice(-6);
-                const messages = [{ role: 'system', content: AGENT_SYSTEM_PROMPT }];
+                const messages = [{ role: 'system', content: getAgentSystemPrompt() }];
                 recentMessages.forEach(m => {
                     if (m.images && m.images.length > 0 && m.role === 'user') {
                         const imgHint = m.images.length === 1 ? '[用户上传了1张图片，请设置mode为img2img，不要描述图片内容，基于用户文字描述生成prompt]' : `[用户上传了${m.images.length}张图片，请设置mode为multiimg，不要描述图片内容，基于用户文字描述生成prompt]`;
@@ -6668,13 +6749,60 @@
                 if (!pending) return;
                 delete agentState.pendingGenerations[taskId];
                 const cardId = pending.cardId;
+                const total = pending.total || 1;
+                // 统计同一 cardId 还有多少未完成的任务
+                const remaining = Object.values(agentState.pendingGenerations).filter(p => p.cardId === cardId).length;
                 if (result) {
-                    updateProgressCard(cardId, 'completed', 100, result, null);
+                    // 多图场景：部分完成但仍有任务在跑，只追加结果不替换状态
+                    if (total > 1 && remaining > 0) {
+                        appendProgressCardResult(cardId, result, pending.type);
+                    } else {
+                        updateProgressCard(cardId, 'completed', 100, result, null);
+                    }
                 } else {
-                    updateProgressCard(cardId, 'failed', 0, null, error?.message || '未知错误');
+                    // 即使部分失败，只要还有任务在跑就只追加错误信息
+                    if (total > 1 && remaining > 0) {
+                        appendProgressCardError(cardId, error?.message || '未知错误');
+                    } else {
+                        updateProgressCard(cardId, 'failed', 0, null, error?.message || '未知错误');
+                    }
                 }
                 scrollAgentToBottom();
                 syncMobileAgent();
+            }
+
+            function appendProgressCardResult(cardId, result, type) {
+                const card = document.getElementById('progressCard_' + cardId);
+                if (!card) return;
+                // 更新进度文字
+                const text = card.querySelector('.agent-progress-text');
+                const completedCount = card.querySelectorAll('.agent-msg-result').length + 1;
+                const total = Object.values(agentState.pendingGenerations).reduce((max, p) => Math.max(max, p.total || 1), 0);
+                if (text) text.textContent = `已生成 ${completedCount}/${total || completedCount}...`;
+                // 追加结果图
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'agent-msg-result';
+                resultDiv.style.marginTop = '8px';
+                if (type === 'video') {
+                    resultDiv.innerHTML = `<video src="${escapeHtml(result)}" controls onclick="window.openViewer('${escapeHtml(result)}','video','')" style="width:100%;max-width:280px;border-radius:var(--radius-sm);cursor:pointer;"></video>`;
+                } else {
+                    resultDiv.innerHTML = `<img src="${escapeHtml(result)}" alt="生成结果" onclick="window.openViewer('${escapeHtml(result)}','image','')" style="width:100%;max-width:200px;border-radius:var(--radius-sm);cursor:pointer;"><button class="result-download-btn" onclick="downloadImage(event, '${escapeHtml(result)}')" title="下载"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></button>`;
+                }
+                card.appendChild(resultDiv);
+                scrollAgentToBottom();
+            }
+
+            function appendProgressCardError(cardId, errorMsg) {
+                const card = document.getElementById('progressCard_' + cardId);
+                if (!card) return;
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'agent-msg-result';
+                resultDiv.style.marginTop = '4px';
+                resultDiv.style.color = 'var(--error)';
+                resultDiv.style.fontSize = '0.8rem';
+                resultDiv.textContent = '部分失败: ' + errorMsg;
+                card.appendChild(resultDiv);
+                scrollAgentToBottom();
             }
 
             let mobileAgentInitialized = false;
