@@ -3430,21 +3430,6 @@
                         <div class="history-card-grid" id="historyCardGrid"></div>
                     </div>
                 </div>
-                <!-- Agent设置二级界面 -->
-                <div class="settings-view" id="settingsViewAgent" style="display:none;">
-                    <button class="settings-back" onclick="showSettingsView('main')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
-                    <div style="padding:0 4px;">
-                        <div class="form-label" style="margin-bottom:8px;">系统提示词</div>
-                        <textarea class="form-textarea" id="agentPromptEditor" rows="16" placeholder="输入自定义系统提示词..." style="font-family:monospace;font-size:0.82rem;line-height:1.5;resize:vertical;min-height:200px;"></textarea>
-                        <div style="display:flex;gap:8px;margin-top:10px;">
-                            <button class="preset-btn active" onclick="saveAgentPrompt()" style="flex:1;">保存</button>
-                            <button class="preset-btn" onclick="resetAgentPrompt()" style="flex:1;">恢复默认</button>
-                        </div>
-                        <div style="margin-top:8px;font-size:0.75rem;color:var(--text-secondary);line-height:1.4;">
-                            自定义 Agent 的系统提示词，影响 AI 对话与生成参数分析的行为。修改后新对话生效。
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -3517,6 +3502,21 @@
                         <div class="theme-option theme-option-row" data-theme-value="system" onclick="setTheme('system')">
                             <div class="theme-option-radio"></div>
                             <div class="theme-option-label">跟随系统</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Agent设置二级界面 -->
+                <div class="settings-view" id="settingsViewAgent" style="display:none;">
+                    <button class="settings-back" onclick="showSettingsView('main')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>返回</button>
+                    <div style="padding:0 4px;">
+                        <div class="form-label" style="margin-bottom:8px;">系统提示词</div>
+                        <textarea class="form-textarea" id="agentPromptEditor" rows="16" placeholder="输入自定义系统提示词..." style="font-family:monospace;font-size:0.82rem;line-height:1.5;resize:vertical;min-height:200px;"></textarea>
+                        <div style="display:flex;gap:8px;margin-top:10px;">
+                            <button class="preset-btn active" onclick="saveAgentPrompt()" style="flex:1;">保存</button>
+                            <button class="preset-btn" onclick="resetAgentPrompt()" style="flex:1;">恢复默认</button>
+                        </div>
+                        <div style="margin-top:8px;font-size:0.75rem;color:var(--text-secondary);line-height:1.4;">
+                            自定义 Agent 的系统提示词，影响 AI 对话与生成参数分析的行为。修改后新对话生效。
                         </div>
                     </div>
                 </div>
@@ -6573,6 +6573,7 @@
             </div>`;
                 agentMessages.appendChild(msgDiv);
                 updateAgentEmptyState();
+                syncMobileAgent();
                 return msgDiv;
             }
 
@@ -6613,6 +6614,7 @@
                     if (text) text.textContent = error || '未知错误';
                 }
                 scrollAgentToBottom();
+                syncMobileAgent();
             }
 
             function fillAgentParams(analysis) {
@@ -6790,6 +6792,7 @@
                 }
                 card.appendChild(resultDiv);
                 scrollAgentToBottom();
+                syncMobileAgent();
             }
 
             function appendProgressCardError(cardId, errorMsg) {
@@ -6803,6 +6806,7 @@
                 resultDiv.textContent = '部分失败: ' + errorMsg;
                 card.appendChild(resultDiv);
                 scrollAgentToBottom();
+                syncMobileAgent();
             }
 
             let mobileAgentInitialized = false;
